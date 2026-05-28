@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+
+{% block title %}扫描报告 - Web漏洞扫描器{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col">
+        <a href="/" class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-left"></i> 返回仪表板</a>
+    </div>
+</div>
+
+<div id="report-content">
+    <div class="text-center py-5">
+        <div class="spinner-border text-primary" role="status"></div>
+        <p class="mt-2">加载报告中...</p>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// 报告通过 /report/<job_id> 直接渲染为HTML页面
+// 这个模板用于通过API加载报告数据
+const jobId = '{{ job_id }}' || window.location.pathname.split('/').pop();
+if (jobId) {
+    fetch(`/api/scan/${jobId}`)
+        .then(r => r.json())
+        .then(data => {
+            if (data.result) {
+                window.location.href = `/report/${jobId}`;
+            } else {
+                document.getElementById('report-content').innerHTML =
+                    '<div class="alert alert-warning">报告数据不存在</div>';
+            }
+        });
+}
+</script>
+{% endblock %}

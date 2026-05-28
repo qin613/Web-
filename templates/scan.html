@@ -1,0 +1,320 @@
+{% extends "base.html" %}
+
+{% block title %}新建扫描 - Web漏洞扫描器{% endblock %}
+
+{% block content %}
+<div class="row">
+    <!-- 左侧：扫描配置 -->
+    <div class="col-lg-4">
+        <div class="card shadow-sm">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0"><i class="bi bi-gear"></i> 扫描配置</h5>
+            </div>
+            <div class="card-body">
+                <form id="scan-form">
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">目标URL <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="target-url"
+                               placeholder="http://example.com" required>
+                        <div class="form-text">输入要扫描的网站地址</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">扫描类型</label>
+                        <select class="form-select" id="scan-type">
+                            <option value="all">全部 (SQL注入 + XSS)</option>
+                            <option value="sqli">仅SQL注入</option>
+                            <option value="xss">仅XSS</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">爬取深度</label>
+                        <input type="range" class="form-range" id="depth" min="1" max="5" value="2">
+                        <div class="d-flex justify-content-between">
+                            <small class="text-muted">浅 (1)</small>
+                            <span id="depth-val" class="badge bg-secondary">2</span>
+                            <small class="text-muted">深 (5)</small>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">并发线程</label>
+                        <input type="range" class="form-range" id="threads" min="1" max="20" value="5">
+                        <div class="d-flex justify-content-between">
+                            <small class="text-muted">1</small>
+                            <span id="threads-val" class="badge bg-secondary">5</span>
+                            <small class="text-muted">20</small>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">超时时间(秒)</label>
+                        <input type="number" class="form-control" id="timeout" value="10" min="3" max="60">
+                    </div>
+
+                    <button type="submit" class="btn btn-primary w-100" id="start-btn">
+                        <i class="bi bi-play-circle"></i> 开始扫描
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <!-- 发现的漏洞实时列表 -->
+        <div class="card shadow-sm mt-3 d-none" id="vuln-card">
+            <div class="card-header bg-danger text-white">
+                <h5 class="mb-0"><i class="bi bi-exclamation-triangle"></i> 发现的漏洞 (<span id="vuln-count">0</span>)</h5>
+            </div>
+            <div class="card-body p-0">
+                <div id="vuln-list" style="max-height:400px;overflow-y:auto;"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 右侧：扫描进度 -->
+    <div class="col-lg-8">
+        <div class="card shadow-sm">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="bi bi-terminal"></i> 扫描日志</h5>
+                <span id="status-badge" class="badge bg-secondary">就绪</span>
+            </div>
+            <div class="card-body">
+                <div id="log-container" class="log-container">
+                    <div class="text-muted text-center py-5">
+                        <i class="bi bi-terminal display-4"></i>
+                        <p class="mt-2">配置扫描参数后点击"开始扫描"</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 扫描结果摘要 -->
+        <div class="card shadow-sm mt-3 d-none" id="result-card">
+            <div class="card-header bg-success text-white">
+                <h5 class="mb-0"><i class="bi bi-check-circle"></i> 扫描完成</h5>
+            </div>
+            <div class="card-body">
+                <div class="row text-center" id="result-summary"></div>
+                <div class="text-center mt-3">
+                    <a id="report-link" href="#" class="btn btn-primary" target="_blank">
+                        <i class="bi bi-file-text"></i> 查看完整报告
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const depthSlider = document.getElementById('depth');
+const threadsSlider = document.getElementById('threads');
+const depthVal = document.getElementById('depth-val');
+const threadsVal = document.getElementById('threads-val');
+const scanForm = document.getElementById('scan-form');
+const logContainer = document.getElementById('log-container');
+const statusBadge = document.getElementById('status-badge');
+const startBtn = document.getElementById('start-btn');
+const vulnCard = document.getElementById('vuln-card');
+const vulnList = document.getElementById('vuln-list');
+const vulnCount = document.getElementById('vuln-count');
+const resultCard = document.getElementById('result-card');
+
+let currentJobId = null;
+let foundVulns = 0;
+
+depthSlider.addEventListener('input', () => depthVal.textContent = depthSlider.value);
+threadsSlider.addEventListener('input', () => threadsVal.textContent = threadsSlider.value);
+
+function addLog(msg, type = 'info') {
+    // 清空初始提示
+    const empty = logContainer.querySelector('.text-muted.text-center');
+    if (empty) empty.remove();
+
+    const line = document.createElement('div');
+    line.className = 'log-line';
+    const time = new Date().toLocaleTimeString();
+    const icons = {
+        'info': '<i class="bi bi-info-circle text-info"></i>',
+        'success': '<i class="bi bi-check-circle text-success"></i>',
+        'warning': '<i class="bi bi-exclamation-triangle text-warning"></i>',
+        'error': '<i class="bi bi-x-circle text-danger"></i>',
+        'vuln': '<i class="bi bi-bug text-danger"></i>',
+    };
+    line.innerHTML = `<span class="text-muted">[${time}]</span> ${icons[type] || icons.info} ${escapeHtml(msg)}`;
+    logContainer.appendChild(line);
+    logContainer.scrollTop = logContainer.scrollHeight;
+}
+
+function addVulnCard(vuln) {
+    foundVulns++;
+    vulnCount.textContent = foundVulns;
+    vulnCard.classList.remove('d-none');
+
+    const severityColors = { high: 'danger', medium: 'warning', low: 'info', info: 'secondary' };
+    const severityLabels = { high: '高危', medium: '中危', low: '低危', info: '信息' };
+    const color = severityColors[vuln.severity] || 'secondary';
+    const label = severityLabels[vuln.severity] || '未知';
+
+    const item = document.createElement('div');
+    item.className = 'p-2 border-bottom';
+    item.innerHTML = `
+        <div class="d-flex justify-content-between align-items-start">
+            <div>
+                <span class="badge bg-${color}">${label}</span>
+                <strong class="ms-1">${escapeHtml(vuln.type)}</strong>
+                <small class="text-muted">(${escapeHtml(vuln.technique)})</small>
+            </div>
+        </div>
+        <div class="small mt-1">
+            <code class="text-break">${escapeHtml(vuln.url)}</code>
+            <br>参数: <code>${escapeHtml(vuln.param)}</code>
+        </div>
+    `;
+    vulnList.prepend(item);
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+scanForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const url = document.getElementById('target-url').value.trim();
+    if (!url) return;
+
+    // 重置状态
+    logContainer.innerHTML = '';
+    vulnList.innerHTML = '';
+    vulnCard.classList.add('d-none');
+    resultCard.classList.add('d-none');
+    foundVulns = 0;
+    vulnCount.textContent = 0;
+
+    startBtn.disabled = true;
+    startBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> 扫描中...';
+    statusBadge.className = 'badge bg-info';
+    statusBadge.textContent = '扫描中';
+
+    const config = {
+        url: url,
+        scan_type: document.getElementById('scan-type').value,
+        threads: parseInt(threadsSlider.value),
+        depth: parseInt(depthSlider.value),
+        timeout: parseInt(document.getElementById('timeout').value),
+    };
+
+    addLog(`启动扫描: ${config.url}`, 'info');
+    addLog(`扫描类型: ${config.scan_type} | 线程: ${config.threads} | 深度: ${config.depth}`, 'info');
+
+    try {
+        const resp = await fetch('/api/scan', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(config),
+        });
+        const data = await resp.json();
+
+        if (data.error) {
+            addLog(`错误: ${data.error}`, 'error');
+            resetBtn();
+            return;
+        }
+
+        currentJobId = data.job_id;
+        addLog(`任务已创建: ${currentJobId}`, 'info');
+
+        // SSE实时监听
+        const eventSource = new EventSource(`/api/scan/${currentJobId}/stream`);
+        eventSource.onmessage = (event) => {
+            const msg = JSON.parse(event.data);
+
+            if (msg.type === 'progress') {
+                addLog(msg.message, 'info');
+            } else if (msg.type === 'vulnerability') {
+                addLog(`发现漏洞: ${msg.data.type} - ${msg.data.technique} @ ${msg.data.param}`, 'vuln');
+                addVulnCard(msg.data);
+            } else if (msg.type === 'done') {
+                eventSource.close();
+                onScanDone(msg.result);
+            }
+        };
+
+        eventSource.onerror = () => {
+            eventSource.close();
+            // 尝试轮询获取结果
+            setTimeout(pollResult, 1000);
+        };
+
+    } catch (err) {
+        addLog(`请求失败: ${err.message}`, 'error');
+        resetBtn();
+    }
+});
+
+function pollResult() {
+    if (!currentJobId) return;
+    fetch(`/api/scan/${currentJobId}`)
+        .then(r => r.json())
+        .then(data => {
+            if (data.status === 'finished' || data.status === 'error') {
+                onScanDone(data.result);
+            } else {
+                // 更新进度
+                (data.progress || []).forEach(msg => addLog(msg, 'info'));
+                setTimeout(pollResult, 2000);
+            }
+        });
+}
+
+function onScanDone(result) {
+    statusBadge.className = 'badge bg-success';
+    statusBadge.textContent = '完成';
+
+    if (result) {
+        addLog(`扫描完成! 耗时 ${result.scan_time.toFixed(1)}s, 发现 ${result.vuln_count} 个漏洞`, 'success');
+
+        // 显示结果摘要
+        resultCard.classList.remove('d-none');
+        document.getElementById('result-summary').innerHTML = `
+            <div class="col"><h4>${result.targets_scanned}</h4><small class="text-muted">扫描目标</small></div>
+            <div class="col"><h4 class="text-danger">${result.high_count}</h4><small class="text-muted">高危</small></div>
+            <div class="col"><h4 class="text-warning">${result.medium_count}</h4><small class="text-muted">中危</small></div>
+            <div class="col"><h4 class="text-info">${result.low_count}</h4><small class="text-muted">低危/信息</small></div>
+            <div class="col"><h4>${result.scan_time.toFixed(1)}s</h4><small class="text-muted">耗时</small></div>
+        `;
+        document.getElementById('report-link').href = `/report/${currentJobId}`;
+    }
+
+    resetBtn();
+}
+
+function resetBtn() {
+    startBtn.disabled = false;
+    startBtn.innerHTML = '<i class="bi bi-play-circle"></i> 开始扫描';
+}
+</script>
+
+<style>
+.log-container {
+    background: #1e1e1e;
+    color: #d4d4d4;
+    font-family: 'Consolas', 'Monaco', monospace;
+    font-size: 13px;
+    padding: 16px;
+    border-radius: 8px;
+    min-height: 300px;
+    max-height: 600px;
+    overflow-y: auto;
+}
+.log-line {
+    padding: 2px 0;
+    line-height: 1.5;
+    word-break: break-all;
+}
+</style>
+{% endblock %}

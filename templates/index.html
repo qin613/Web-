@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+
+{% block title %}仪表板 - Web漏洞扫描器{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-md-8">
+        <h2><i class="bi bi-speedometer2"></i> 扫描仪表板</h2>
+        <p class="text-muted">管理扫描任务，查看扫描结果</p>
+    </div>
+    <div class="col-md-4 text-end">
+        <a href="/scan" class="btn btn-primary btn-lg">
+            <i class="bi bi-plus-circle"></i> 新建扫描
+        </a>
+    </div>
+</div>
+
+<div id="job-list" class="row">
+    <div class="col-12 text-center text-muted py-5" id="loading">
+        <div class="spinner-border text-primary" role="status"></div>
+        <p class="mt-2">加载中...</p>
+    </div>
+</div>
+
+<div id="empty-state" class="text-center py-5 d-none">
+    <i class="bi bi-inbox display-1 text-muted"></i>
+    <h4 class="mt-3 text-muted">暂无扫描记录</h4>
+    <p class="text-muted">点击"新建扫描"开始第一次扫描</p>
+    <a href="/scan" class="btn btn-primary mt-2">
+        <i class="bi bi-search"></i> 开始扫描
+    </a>
+</div>
+
+<div id="jobs-container" class="d-none">
+    <div class="table-responsive">
+        <table class="table table-hover">
+            <thead>
+                <tr>
+                    <th>任务ID</th>
+                    <th>目标URL</th>
+                    <th>扫描类型</th>
+                    <th>状态</th>
+                    <th>漏洞数</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody id="jobs-tbody"></tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function loadJobs() {
+    fetch('/api/jobs')
+        .then(r => r.json())
+        .then(jobs => {
+            document.getElementById('loading').classList.add('d-none');
+            if (jobs.length === 0) {
+                document.getElementById('empty-state').classList.remove('d-none');
+                document.getElementById('jobs-container').classList.add('d-none');
+                return;
+            }
+            document.getElementById('empty-state').classList.add('d-none');
+            document.getElementById('jobs-container').classList.remove('d-none');
+
+            const tbody = document.getElementById('jobs-tbody');
+            tbody.innerHTML = jobs.map(job => {
+                const statusBadge = {
+                    'running': '<span class="badge bg-info"><i class="bi bi-arrow-repeat spin"></i> 扫描中</span>',
+                    'finished': '<span class="badge bg-success"><i class="bi bi-check-circle"></i> 完成</span>',
+                    'error': '<span class="badge bg-danger"><i class="bi bi-x-circle"></i> 错误</span>',
+                }[job.status] || '<span class="badge bg-secondary">未知</span>';
+
+                const typeLabel = {
+                    'all': 'SQL注入 + XSS',
+                    'sqli': 'SQL注入',
+                    'xss': 'XSS',
+                }[job.scan_type] || job.scan_type;
+
+                const vulnCount = job.vuln_count || 0;
+                const vulnBadge = vulnCount > 0
+                    ? `<span class="badge bg-danger">${vulnCount} 个漏洞</span>`
+                    : '<span class="badge bg-success">安全</span>';
+
+                const actions = job.status === 'finished'
+                    ? `<a href="/report/${job.id}" class="btn btn-sm btn-outline-primary"><i class="bi bi-file-text"></i> 查看报告</a>`
+                    : job.status === 'running'
+                    ? `<a href="/scan?job=${job.id}" class="btn btn-sm btn-outline-info"><i class="bi bi-eye"></i> 查看进度</a>`
+                    : '';
+
+                return `<tr>
+                    <td><code>${job.id}</code></td>
+                    <td><code>${escapeHtml(job.target_url)}</code></td>
+                    <td>${typeLabel}</td>
+                    <td>${statusBadge}</td>
+                    <td>${vulnBadge}</td>
+                    <td>${actions}</td>
+                </tr>`;
+            }).join('');
+        });
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+loadJobs();
+// 正在运行的任务自动刷新
+setInterval(loadJobs, 3000);
+</script>
+
+<style>
+.spin {
+    animation: spin 1s linear infinite;
+}
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+</style>
+{% endblock %}

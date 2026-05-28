@@ -1,0 +1,25 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+
+# 扫描报告（本地生成，不上传）
+reports/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 虚拟环境
+venv/
+.venv/
+env/
+
+# 系统文件
+.DS_Store
+Thumbs.db
