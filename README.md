@@ -1,4 +1,6 @@
-# Web漏洞扫描器
+# Web漏洞扫描器<img width="2490" height="1269" alt="image" src="https://github.com/user-attachments/assets/5cb3e26b-f142-41c8-9ce3-d17c09b39b88" />
+<img width="1701" height="834" alt="image" src="https://github.com/user-attachments/assets/6243fde6-6a54-4f91-a860-694d59ae9746" />
+
 
 一款基于Python的Web漏洞自动化扫描工具，支持SQL注入和XSS漏洞检测，提供Web界面和命令行两种使用方式。
 
