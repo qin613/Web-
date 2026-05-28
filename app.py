@@ -154,7 +154,36 @@ def view_report(job_id):
         return "报告不存在", 404
 
     result_data = job["result"]
-    # 重建ScanResult对象
+    vuln_data = job.get("vulns", [])
+
+    # 重建ScanResult对象，包含漏洞数据
+    from scanner.sqli import SQLiVulnerability
+    from scanner.xss import XSSVulnerability
+
+    vulnerabilities = []
+    for v in vuln_data:
+        if v.get("type") == "SQL Injection":
+            vuln = SQLiVulnerability(
+                url=v["url"],
+                param=v["param"],
+                method=v["method"],
+                technique=v["technique"],
+                payload=v["payload"],
+                evidence=v["evidence"],
+                severity=v.get("severity", "high"),
+            )
+        else:
+            vuln = XSSVulnerability(
+                url=v["url"],
+                param=v["param"],
+                method=v["method"],
+                technique=v["technique"],
+                payload=v["payload"],
+                evidence=v["evidence"],
+                severity=v.get("severity", "medium"),
+            )
+        vulnerabilities.append(vuln)
+
     result = ScanResult(
         target_url=result_data["target_url"],
         scan_type=result_data["scan_type"],
@@ -162,6 +191,7 @@ def view_report(job_id):
         scan_time=result_data["scan_time"],
         started_at=result_data["started_at"],
         finished_at=result_data["finished_at"],
+        vulnerabilities=vulnerabilities,
     )
 
     reporter = Reporter()

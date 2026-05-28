@@ -20,6 +20,10 @@ venv/
 .venv/
 env/
 
+# 靶场数据文件
+test.db
+comments.txt
+
 # 系统文件
 .DS_Store
 Thumbs.db

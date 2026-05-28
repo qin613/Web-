@@ -114,9 +114,43 @@ python cli.py -u http://target.com --scan-type xss -o my_reports/
 
 注入唯一标记检测参数值是否被反射，然后发送多种XSS Payload，检查是否在响应中原样输出（未编码），区分安全编码和危险反射。
 
-## 测试靶场
+## 内置测试靶场
 
-以下公开靶场可用于测试（请在合法授权下使用）：
+项目自带一个漏洞测试靶场 `vuln_app.py`，包含SQL注入和XSS漏洞，方便本地测试。
+
+### 启动靶场
+
+```bash
+python vuln_app.py
+```
+
+靶场启动后访问 `http://127.0.0.1:8080`
+
+### 靶场漏洞说明
+
+| 页面 | URL | 漏洞类型 |
+|------|-----|----------|
+| 搜索 | `/search?q=` | SQL注入（报错注入）+ XSS（反射型） |
+| 登录 | `/login` | SQL注入 + XSS |
+| 产品详情 | `/product?id=1` | SQL注入 + XSS |
+| 评论区 | `/comment` | XSS（存储型） |
+
+### 扫描靶场
+
+```bash
+# 新开一个终端，扫描靶场
+python cli.py -u http://127.0.0.1:8080
+
+# 仅扫描SQL注入
+python cli.py -u http://127.0.0.1:8080 --scan-type sqli
+
+# 仅扫描XSS
+python cli.py -u http://127.0.0.1:8080 --scan-type xss
+```
+
+### 其他公开靶场
+
+以下公开靶场也可用于测试（请在合法授权下使用）：
 
 - http://testphp.vulnweb.com
 - http://testasp.vulnweb.com
